@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { errorHandler } from "./middleware/error-handler";
-import { BASIC_AUTH_CHALLENGE, requireBasicAuth } from "./middleware/basic-auth";
+import { logoutChallenge, requireBasicAuth } from "./middleware/basic-auth";
 import { MAX_JSON_BODY_BYTES } from "./middleware/request-body";
 import { requestLogger } from "./middleware/request-logger";
 import { applySecurityHeaders } from "./middleware/security-headers";
@@ -35,18 +35,7 @@ app.use("/api/*", bodyLimit({
 // authentication prompt; after cancellation the HTML returns them to the top.
 // This is browser-dependent, not server-side revocation. Do not clear cookies or
 // storage: those are unrelated to the HTTP authentication cache.
-app.post("/api/logout", (c) => {
-  c.header("WWW-Authenticate", BASIC_AUTH_CHALLENGE);
-  return c.html(`<!doctype html>
-<html lang="ja"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0;url=/">
-<title>認証情報のリセット</title></head>
-<body><main><h1>認証情報のリセット</h1>
-<p>認証画面が表示されたら「キャンセル」を選んでください。</p>
-<p>トップページに戻ります。自動で戻らない場合は<a href="/">トップページへ</a>。</p>
-</main></body></html>`, 401);
-});
+app.post("/api/logout", () => logoutChallenge());
 
 app.get("/api/health", (c) =>
   c.json({

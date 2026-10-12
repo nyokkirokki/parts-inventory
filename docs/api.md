@@ -49,7 +49,7 @@ Cache-Control: no-store
 
 正しい認証情報にも、通常ログインと同一realmの401を返してブラウザのHTTP認証キャッシュの無効化を促します。認証画面が出た場合は再入力せず「キャンセル」を選びます。HTMLのmeta refreshで固定の `/` へ戻り、未対応時のリンクも用意しています。トップも認証必須なので、再び認証画面が出る場合があります。クエリの遷移先は採用しません。
 
-`Clear-Site-Data`、`Set-Cookie`、303は使いません。DBアクセスも行いません。Cookie・localStorage/sessionStorageは保持します。GETではログアウトせず404。外部originの認証済みPOSTは403、未認証POSTは通常の401です。HTTP認証キャッシュの消去とHTML遷移はブラウザ依存で、Safari実機の確認手順は `operations.md` を参照してください。
+`Clear-Site-Data`、`Set-Cookie`、303は使いません。DBアクセスも行いません。Cookie・localStorage/sessionStorageは保持します。GETではログアウトせず404。外部originの認証済みPOSTは403です。未認証・認証情報が不正なPOSTにも同じ401の案内HTMLを返します。Chromeが認証キャンセル後に認証情報なしで再送しても、通常の認証エラー文だけにならず、トップへのmeta refreshとリンクを保持します。通常の画面・APIの認証チェックと、認証設定が未設定の場合の500は維持します。HTTP認証キャッシュの消去とHTML遷移はブラウザ依存で、実機の確認手順は `operations.md` を参照してください。
 
 ## Health
 
