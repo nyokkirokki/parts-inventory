@@ -92,6 +92,27 @@ describe("security boundaries", () => {
 });
 
 describe("logout", () => {
+  it.each(["", "Basic aW52YWxpZDppbnZhbGlk", "Basic not-base64"])("returns top-page navigation when Chrome retries logout with rejected authorization %j", async (authorization) => {
+    const first = await client.raw("/api/logout", { method: "POST" });
+    const response = await client.raw("/api/logout?next=https://evil.example", {
+      method: "POST",
+      headers: { authorization, origin: "http://localhost", "content-type": "application/x-www-form-urlencoded" },
+      body: "",
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe(first.headers.get("www-authenticate"));
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.has("set-cookie")).toBe(false);
+    expect(response.headers.has("clear-site-data")).toBe(false);
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    const html = await response.text();
+    expect(html).toBe(await first.text());
+    expect(html).toContain('<meta http-equiv="refresh" content="0;url=/">');
+    expect(html).toContain('href="/"');
+    expect(html).not.toContain("evil.example");
+  });
+
   it("rejects valid cached credentials in the login realm and returns fixed top-page navigation", async () => {
     const login = await client.raw("/", { headers: { authorization: "" } });
     const response = await client.raw("/api/logout?next=https://evil.example", { method: "POST", headers: { origin: "http://localhost", "content-type": "application/x-www-form-urlencoded" }, body: "" });
@@ -111,19 +132,28 @@ describe("logout", () => {
     expect(html).not.toContain("inventory-pass");
   });
 
-  it("never accesses the database or asset binding, including repeated valid credential submissions", async () => {
+  it("never accesses the database or asset binding before or after cached credentials are rejected", async () => {
     const env = {
       BASIC_AUTH_USER: "inventory", BASIC_AUTH_PASSWORD: "inventory-pass",
       get DB(): D1Database { throw new Error("Logout must not access D1"); },
       get ASSETS(): Fetcher { throw new Error("Logout must not fetch assets"); },
     };
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (const authorization of [authHeader(), "", "Basic aW52YWxpZDppbnZhbGlk"]) {
       const response = await app.request("http://localhost/api/logout", {
-        method: "POST", headers: { origin: "http://localhost", authorization: authHeader() },
+        method: "POST", headers: { origin: "http://localhost", authorization },
       }, env);
       expect(response.status).toBe(401);
       expect(response.headers.get("content-type")).toContain("text/html");
     }
+  });
+
+  it("fails closed on an unauthenticated logout retry when secrets are missing", async () => {
+    const response = await app.request("/api/logout", { method: "POST" }, {
+      get DB(): D1Database { throw new Error("Logout must not access D1"); },
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ error: { code: "BASIC_AUTH_NOT_CONFIGURED" } });
+    expect(response.headers.has("www-authenticate")).toBe(false);
   });
 
   it("keeps the top page and APIs protected after a logout challenge", async () => {
