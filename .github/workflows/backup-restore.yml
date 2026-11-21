@@ -34,7 +34,7 @@ jobs:
             --command "INSERT INTO parts (category_id,model_number,name,stock_quantity) VALUES (2,'RESTORE-SENTINEL','Backup and restore marker',123)"
       - name: Full local D1 SQL export (never remote)
         run: |
-          pnpm exec wrangler d1 export db-parts --local --persist-to .wrangler/state \
+          pnpm exec wrangler d1 export db-parts --local \
             --output "$RUNNER_TEMP/backup-original.sql"
       - name: Verify restore into new SQLite database and compare all application tables
         run: |
