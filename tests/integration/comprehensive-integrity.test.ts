@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createTestClient } from "./harness";
+import { createTestClient, authHeader } from "./harness";
+import { app } from "../../src/worker/app";
 
 const sample = { categoryId: 2, modelNumber: "AUDIT-1", name: "監査用部品", stockQuantity: 10 };
 async function post(client: ReturnType<typeof createTestClient>, path: string, data: unknown) {
@@ -186,5 +187,64 @@ describe("data integrity and production-limit regressions", () => {
     expect(imported.body.data.failed).toBe(1);
     const categories = await get(c, "/api/categories");
     expect(categories.body.data.some((v: { name: string }) => v.name === "AuditInvalidCategory")).toBe(false);
+  });
+
+  it("chunks bulk operations so each D1 statement binds at most 100 values", async () => {
+    const c = createTestClient();
+    const original = c.db.prepare.bind(c.db);
+    let maximum = 0;
+    c.db.prepare = (sql: string) => {
+      const stmt = original(sql);
+      const bind = stmt.bind.bind(stmt);
+      stmt.bind = (...args: unknown[]) => {
+        maximum = Math.max(maximum, args.length);
+        if (args.length > 100) throw new Error("D1_SQLITE_MAX_VARIABLE_NUMBER exceeded");
+        return bind(...args);
+      };
+      return stmt;
+    };
+    const ids = Array.from({ length: 220 }, (_, i) => i + 1);
+    const changed = await post(c, "/api/parts/bulk/update", {
+      ids, data: { manufacturer: "Audit Co.", memo: "200+ parts" },
+    });
+    expect(changed.response.status).toBe(200);
+    expect(maximum).toBeLessThanOrEqual(100);
+  });
+
+  it("does not serve SPA HTML to an unrecognized API endpoint when ASSETS exists", async () => {
+    const c = createTestClient();
+    const env = {
+      DB: c.db as unknown as D1Database,
+      BASIC_AUTH_USER: "inventory",
+      BASIC_AUTH_PASSWORD: "inventory-pass",
+      ASSETS: { fetch: async () => new Response("<html>SPA</html>", { status: 200 }) },
+    };
+    const response = await app.fetch(
+      new Request("http://localhost/api/unknown", { headers: { authorization: authHeader() } }),
+      env as Parameters<typeof app.fetch>[1],
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect((await response.json()).error.code).toBe("NOT_FOUND");
+  });
+
+  it("records all stock before/after values in a consistent contiguous sequence", async () => {
+    const c = createTestClient();
+    const p = await post(c, "/api/parts", { ...sample, modelNumber: "STOCK-HISTORY-ORDER" });
+    const id = p.body.data.id;
+    const updates = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        post(c, "/api/parts/" + id + "/stock", { type: "in", quantity: 1, reason: String(i) }),
+      ),
+    );
+    expect(updates.every(u => u.response.status === 200)).toBe(true);
+    const history = await get(c, "/api/parts/" + id + "/movements");
+    const sorted = [...history.body.data].sort((a: {id:number},b: {id:number})=>a.id-b.id);
+    let quantity = 0;
+    for (const entry of sorted) {
+      expect(entry.quantityBefore).toBe(quantity);
+      quantity = entry.quantityAfter;
+    }
+    expect(quantity).toBe(22);
   });
 });
