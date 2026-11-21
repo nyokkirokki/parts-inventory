@@ -12,6 +12,8 @@
  *      --sentinel RESTORE-SENTINEL
  */
 import { DatabaseSync } from "node:sqlite";
+import { argv, stdout } from "node:process";
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import {
   mkdtempSync, readdirSync, readFileSync, rmSync,
@@ -20,11 +22,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 function arg(flag) {
-  const position = process.argv.indexOf(flag);
-  if (position < 0 || !process.argv[position + 1]) {
+  const position = argv.indexOf(flag);
+  if (position < 0 || !argv[position + 1]) {
     throw new Error("Missing required " + flag + " argument");
   }
-  return process.argv[position + 1];
+  return argv[position + 1];
 }
 
 function findDbFiles(root) {
@@ -85,8 +87,8 @@ function checkIntegrity(db, name) {
 function main() {
   const sourceDir = resolve(arg("--source-dir"));
   const sqlPath = resolve(arg("--backup"));
-  const sentinel = process.argv.includes("--sentinel") ? arg("--sentinel") : null;
-  if (process.argv.includes("--remote")) {
+  const sentinel = argv.includes("--sentinel") ? arg("--sentinel") : null;
+  if (argv.includes("--remote")) {
     throw new Error("Remote / production backups must never be touched by this local verification command.");
   }
   const sources = findDbFiles(sourceDir);
@@ -137,7 +139,7 @@ function main() {
       if (rows.length !== 1) throw new Error("The expected sentinel part was not restored.");
     }
     if (totalRows === 0) throw new Error("An empty backup cannot satisfy recovery verification.");
-    process.stdout.write(
+    stdout.write(
       "BACKUP RESTORE VERIFIED: " + sourceTables.length + " tables, " +
       totalRows + " rows, byte-equivalent normalized rows and matching column layouts.\n",
     );
