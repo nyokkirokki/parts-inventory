@@ -114,10 +114,14 @@ Basic認証なしでは `401` になり、正しいBasic認証付きで `GET` �
 ## Operational Notes
 
 - 画面と閲覧APIはBasic認証で保護する。本格ログインは未実装。
-- D1のバックアップ用途として `GET /api/export/parts?format=json&mode=raw` を使う。
+- JSONエクスポートはDB全体のバックアップではない。完全なリカバリは `docs/disaster-recovery.md` に従い、Time Travelの復旧ポイントを使用する。
 - PDFの日本語フォント埋め込みは未対応。日本語を含む外部提出用帳票では出力確認を行う。
 
 
 ## v0.2.1 Upgrade Safety
 
 Before upgrading a deployed Worker, create a verified Cloudflare D1 backup / Time Travel restore point. Apply the two new SQL migrations (`0011_atomic_create_tokens.sql` and `0012_import_after_snapshots.sql`) with `pnpm db:migrate:remote` **before** deploying the new Worker. Test against a staging D1 first. Older import batches cannot be safely reverted automatically because they lack post-import snapshots; return HTTP 409 instead of overwriting later edits.
+
+## Downtime-safe recovery
+
+Read `docs/disaster-recovery.md` first. CI runs an isolated local backup/restore round trip; **never** run live exports or restores in normal deployment. Cloudflare D1 export can block database requests, and Time Travel restore cancels in-flight queries.
