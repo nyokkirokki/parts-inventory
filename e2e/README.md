@@ -14,7 +14,7 @@ pnpm build
 pnpm exec wrangler d1 migrations apply db-parts --local --persist-to .wrangler/state
 cp .dev.vars.example .dev.vars
 # Update .dev.vars to BASIC_AUTH_USER=e2e / BASIC_AUTH_PASSWORD=test-only-secret
-pnpm exec wrangler dev --local --persist-to .wrangler/state --port 8787
+./e2e/node_modules/.bin/wrangler dev --local --persist-to .wrangler/state --port 8787
 ```
 
 Then run `npm --prefix e2e test` in another terminal. Only run with disposable/local D1 data. The GitHub Actions job initializes a fresh D1 and disposable test-only credentials for each run.

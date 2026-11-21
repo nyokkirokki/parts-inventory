@@ -43,9 +43,14 @@ jobs:
       - name: Start local Cloudflare Worker with Basic Auth
         run: |
           printf 'BASIC_AUTH_USER=%s\nBASIC_AUTH_PASSWORD=%s\n' "$E2E_BASIC_AUTH_USER" "$E2E_BASIC_AUTH_PASSWORD" > .dev.vars
-          pnpm exec wrangler dev --local --persist-to .wrangler/state --port 8787 --ip 127.0.0.1 > /tmp/worker-e2e.log 2>&1 &
+          ./e2e/node_modules/.bin/wrangler dev --local --persist-to .wrangler/state --port 8787 --ip 127.0.0.1 > /tmp/worker-e2e.log 2>&1 &
           echo "$!" > /tmp/worker-e2e.pid
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 30); do
+            if ! kill -0 "$(cat /tmp/worker-e2e.pid)" 2>/dev/null; then
+              echo "Wrangler exited before the health check was ready"
+              cat /tmp/worker-e2e.log
+              exit 1
+            fi
             code="$(curl --silent --output /dev/null --write-out '%{http_code}' --user "$E2E_BASIC_AUTH_USER:$E2E_BASIC_AUTH_PASSWORD" http://127.0.0.1:8787/api/health || true)"
             if [ "$code" = "200" ]; then
               echo "Local Worker + D1 are ready"
