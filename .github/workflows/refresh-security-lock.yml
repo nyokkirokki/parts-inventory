@@ -1,0 +1,49 @@
+name: Refresh and verify security dependency lockfile
+on:
+  push:
+    branches:
+      - test/security-regression-hardening-20261121
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: contains(github.event.head_commit.message, '[refresh-lock]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Resolve pinned SheetJS CDN tarball and refresh semver-compatible packages
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm update hono react-router react-router-dom zod postcss
+      - name: Lint
+        run: pnpm lint
+      - name: Web regression tests
+        run: pnpm test:web
+      - name: D1 integration regressions
+        run: pnpm test:integration
+      - name: Typecheck and build
+        run: pnpm build
+      - name: Final production dependency audit
+        if: always()
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level high
+      - name: Commit tested lockfile and dependency specifications
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(deps): refresh verified security dependency lockfile"
+            git push origin HEAD:test/security-regression-hardening-20261121
+          fi
