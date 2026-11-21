@@ -627,7 +627,7 @@ export class PartsRepository {
       ]);
       if (updated.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
     } catch (error) {
-      if (error instanceof Error && /CHECK constraint failed|constraint failed.*stock_quantity/i.test(error.message)) {
+      if (/CHECK constraint failed|constraint failed.*stock_quantity/i.test(String(error))) {
         throw new AppError("NEGATIVE_STOCK", "Stock quantity cannot be negative.", 400);
       }
       throw error;

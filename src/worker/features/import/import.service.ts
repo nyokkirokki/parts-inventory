@@ -215,6 +215,7 @@ function toWriteInput(part: PartDetail): PartWriteInput {
     datasheetUrl: part.datasheetUrl ?? null,
     memo: part.memo ?? null,
     lowStockThreshold: part.lowStockThreshold,
+    statusId: part.statusId ?? null,
     attributes: part.attributes.map((a) => ({
       key: a.key,
       label: a.label ?? null,
