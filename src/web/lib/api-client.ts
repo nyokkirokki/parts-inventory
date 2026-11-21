@@ -88,6 +88,7 @@ function invalidateCache(prefix: string): void {
 
 export function invalidateAllCache(): void {
   cache.clear();
+  for (const record of inflight.values()) record.valid = false;
   inflight.clear();
 }
 
@@ -124,9 +125,10 @@ function fetchAndCache<TBody>(key: string, path: string, init: RequestInit): Pro
   })();
 
   inflight.set(key, record);
-  void record.promise.finally(() => {
-    if (inflight.get(key) === record) inflight.delete(key);
-  });
+  void record.promise.then(
+    () => { if (inflight.get(key) === record) inflight.delete(key); },
+    () => { if (inflight.get(key) === record) inflight.delete(key); },
+  );
   return record.promise as Promise<TBody>;
 }
 
@@ -151,6 +153,13 @@ async function requestBody<TBody>(path: string, init: RequestInit = {}): Promise
     // Parts summaries embed category/tag/location names, so any related mutation
     // (categories, tags, locations, import, …) can leave the parts list stale.
     if (segment !== "parts") invalidateCache("/api/parts");
+    // Project costs and titles embed part information.
+    if (segment === "parts") invalidateCache("/api/projects");
+    if (segment === "import") {
+      invalidateCache("/api/categories");
+      invalidateCache("/api/tags");
+      invalidateCache("/api/projects");
+    }
     return body as TBody;
   }
 

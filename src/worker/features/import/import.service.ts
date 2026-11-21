@@ -55,13 +55,13 @@ export class ImportService {
           categoryId: category.id,
           modelNumber: row.model_number,
           name: row.name,
-          stockQuantity: row.stock_quantity,
+          stockQuantity: row.stock_quantity ?? 0,
           price: row.price ?? null,
           footprint: row.footprint ?? null,
           manufacturer: row.manufacturer ?? null,
           caseNumber: row.case_number ?? null,
           memo: row.memo ?? null,
-          lowStockThreshold: row.low_stock_threshold,
+          lowStockThreshold: row.low_stock_threshold ?? 0,
           tagNames: this.parseTags(row.tags),
           attributes: this.parseAttributes(row.attributes_json),
           tagIds: [],
@@ -73,10 +73,26 @@ export class ImportService {
             skipped += 1;
             continue;
           }
-          // 更新前の状態をスナップショットして取り消し可能にする
+          // Update only fields supplied by the import. Never clear unrelated
+          // URLs, locations, status, alternatives, tags, or attributes.
           const before = await this.partsService.getDetail(existing.id);
-          await this.partsService.update(existing.id, payload);
-          entries.push({ partId: existing.id, action: "update", beforeJson: JSON.stringify(toWriteInput(before)) });
+          const previous = toWriteInput(before);
+          await this.partsService.update(existing.id, {
+            ...previous,
+            ...payload,
+            stockQuantity: row.stock_quantity ?? previous.stockQuantity,
+            lowStockThreshold: row.low_stock_threshold ?? previous.lowStockThreshold,
+            price: row.price === undefined ? previous.price : row.price,
+            caseNumber: row.case_number === undefined ? previous.caseNumber : row.case_number,
+            footprint: row.footprint === undefined ? previous.footprint : row.footprint,
+            manufacturer: row.manufacturer === undefined ? previous.manufacturer : row.manufacturer,
+            memo: row.memo === undefined ? previous.memo : row.memo,
+            attributes: row.attributes_json === undefined ? previous.attributes : payload.attributes,
+            tagNames: row.tags === undefined ? previous.tagNames : payload.tagNames,
+            tagIds: row.tags === undefined ? previous.tagIds : [],
+            alternatives: previous.alternatives,
+          });
+          entries.push({ partId: existing.id, action: "update", beforeJson: JSON.stringify(previous) });
           updated += 1;
         } else {
           const detail = await this.partsService.create(payload);
@@ -151,7 +167,9 @@ export class ImportService {
 
   private async ensureCategory(name: string) {
     const slug = slugify(name);
-    return (await this.categoriesRepository.findBySlug(slug)) ?? this.categoriesRepository.create({ name, slug });
+    return (await this.categoriesRepository.findByName(name)) ??
+      (await this.categoriesRepository.findBySlug(slug)) ??
+      this.categoriesRepository.create({ name, slug });
   }
 
   private parseTags(value: ImportPartRow["tags"]): string[] {

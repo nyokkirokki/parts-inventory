@@ -98,12 +98,17 @@ export class ProjectsRepository {
 
   async findExistingPartIds(ids: number[]): Promise<Set<number>> {
     if (ids.length === 0) return new Set<number>();
-    const placeholders = ids.map(() => "?").join(",");
-    const { results } = await this.db
-      .prepare(`SELECT id FROM parts WHERE id IN (${placeholders})`)
-      .bind(...ids)
-      .all<{ id: number }>();
-    return new Set(results.map((row) => row.id));
+    const existing = new Set<number>();
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80);
+      const placeholders = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(`SELECT id FROM parts WHERE id IN (${placeholders})`)
+        .bind(...chunk)
+        .all<{ id: number }>();
+      for (const row of results) existing.add(row.id);
+    }
+    return existing;
   }
 
   async addPart(projectId: number, part: ProjectPartPersist): Promise<void> {
