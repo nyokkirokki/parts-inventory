@@ -1,0 +1,38 @@
+name: Security and regression CI
+on:
+  push:
+    branches:
+      - main
+      - test/security-regression-hardening-20261121
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Install immutable dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Web regression tests
+        run: pnpm test:web
+      - name: D1 integration tests
+        run: pnpm test:integration
+      - name: Typecheck and build
+        run: pnpm build
+      - name: Production dependency audit (informational)
+        if: always()
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level high
