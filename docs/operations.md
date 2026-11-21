@@ -151,3 +151,7 @@ Basic認証なしでは `401` になり、正しいBasic認証付きで `GET` �
 5. 再ログイン後、在庫データと保存済み設定が保持されていることを確認する。
 
 HTTP 401はこのログアウト処理の意図した応答。HTTP 401が返ったことだけではキャッシュ消去成功とは判断しない。確認するのは、その後の通信で以前の認証情報が自動送信されないこと。OSとChrome・Safariのバージョンも記録する。Windows Chromeでは、キャンセル後に認証情報なしのログアウトPOSTがあっても `/` へ戻ることを確認する。
+
+## v0.2.1 Upgrade Safety (proposed; do not auto-deploy)
+
+PR #7 adds two additive migrations: `0011_atomic_create_tokens.sql` and `0012_import_after_snapshots.sql`. Before any approved deployment, verify a D1 Time Travel recovery bookmark, apply migrations **before** the new Worker, and inspect recent import/stock/CSV/API flows. Do not run remote migrations or restores automatically. Import batches predating post-import snapshots reject automatic revert with HTTP 409 rather than overwrite later edits.

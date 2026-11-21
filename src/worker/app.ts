@@ -60,7 +60,16 @@ app.notFound(async (c) => {
     return c.json({ error: { code: "NOT_FOUND", message: "Route not found." } }, 404);
   }
   if (c.env.ASSETS) {
-    const asset = await c.env.ASSETS.fetch(c.req.raw);
+    let asset = await c.env.ASSETS.fetch(c.req.raw);
+    // SPA deep links must fall back *after* Basic auth and CSRF middleware.
+    // Static assets or API misses must never be rewritten to index.html.
+    if (asset.status === 404 && c.req.method === "GET" &&
+        c.req.header("accept")?.includes("text/html")) {
+      asset = await c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url), {
+        method: "GET",
+        headers: c.req.raw.headers,
+      }));
+    }
     // Fetch responses have immutable headers in Workers. Clone before the
     // security and cache middleware attaches headers to the asset response.
     return new Response(asset.body, asset);

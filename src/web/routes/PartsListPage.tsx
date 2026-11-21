@@ -305,6 +305,7 @@ export function PartsListPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     setIsLoading(true);
     setError("");
     const next = new URLSearchParams(searchParams);
@@ -317,22 +318,28 @@ export function PartsListPage() {
 
     Promise.all([apiClient.listParts(next), headerPromise])
       .then(([partData, headerData]) => {
+        if (!active) return;
         setParts(partData.items);
         setTotalCount(partData.total);
         setCustomHeaders(headerData);
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setIsLoading(false));
+      .catch((err) => { if (active) setError(err.message); })
+      .finally(() => { if (active) setIsLoading(false); });
 
     const recentParams = new URLSearchParams(next);
     recentParams.set("sort", "updatedAt");
     recentParams.set("direction", "desc");
     recentParams.set("page", "1");
     recentParams.set("pageSize", "5");
-    apiClient.listParts(recentParams).then((data) => setRecentParts(data.items)).catch(() => setRecentParts([]));
+    apiClient.listParts(recentParams)
+      .then((data) => { if (active) setRecentParts(data.items); })
+      .catch(() => { if (active) setRecentParts([]); });
 
     // 総在庫価格(ベータ): 現在のフィルタ条件全体での集計（ページ単位ではない）
-    apiClient.getPartsStats(next).then(setStats).catch(() => setStats(null));
+    apiClient.getPartsStats(next)
+      .then((data) => { if (active) setStats(data); })
+      .catch(() => { if (active) setStats(null); });
+    return () => { active = false; };
   }, [searchParams]);
 
   useEffect(() => {

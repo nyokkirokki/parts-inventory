@@ -28,6 +28,12 @@ export class CategoriesRepository {
     return row ? mapCategory(row) : null;
   }
 
+  async findByName(name: string): Promise<Category | null> {
+    const row = await this.db.prepare("SELECT * FROM categories WHERE name = ? COLLATE NOCASE LIMIT 1")
+      .bind(name).first<DbCategoryRow>();
+    return row ? mapCategory(row) : null;
+  }
+
   async findBySlug(slug: string): Promise<Category | null> {
     const row = await this.db.prepare("SELECT * FROM categories WHERE slug = ?").bind(slug).first<DbCategoryRow>();
     return row ? mapCategory(row) : null;

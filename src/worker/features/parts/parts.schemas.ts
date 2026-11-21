@@ -37,6 +37,14 @@ export const partWriteSchema = z.object({
   tagIds: z.array(z.coerce.number().int().positive()).max(100).default([]),
   tagNames: z.array(z.string().trim().min(1)).max(100).default([]),
   alternatives: z.array(z.string().trim().min(1)).max(100).default([]),
+}).superRefine((input, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, attribute] of input.attributes.entries()) {
+    if (seen.has(attribute.key)) {
+      ctx.addIssue({ code: "custom", path: ["attributes", index, "key"], message: "Duplicate attribute key." });
+    }
+    seen.add(attribute.key);
+  }
 });
 
 export const stockChangeSchema = z

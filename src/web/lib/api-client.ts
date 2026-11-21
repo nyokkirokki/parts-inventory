@@ -97,6 +97,7 @@ function invalidateCache(prefix: string): void {
 
 export function invalidateAllCache(): void {
   cache.clear();
+  for (const record of inflight.values()) record.valid = false;
   inflight.clear();
 }
 
@@ -140,9 +141,10 @@ function fetchAndCache<TBody>(key: string, path: string, init: RequestInit): Pro
   })();
 
   inflight.set(key, record);
-  void record.promise.finally(() => {
-    if (inflight.get(key) === record) inflight.delete(key);
-  });
+  void record.promise.then(
+    () => { if (inflight.get(key) === record) inflight.delete(key); },
+    () => { if (inflight.get(key) === record) inflight.delete(key); },
+  );
   return record.promise as Promise<TBody>;
 }
 
@@ -167,6 +169,13 @@ async function requestBody<TBody>(path: string, init: RequestInit = {}): Promise
     // Parts summaries embed category/tag/location names, so any related mutation
     // (categories, tags, locations, import, …) can leave the parts list stale.
     if (segment !== "parts") invalidateCache("/api/parts");
+    // Project costs and titles embed part information.
+    if (segment === "parts") invalidateCache("/api/projects");
+    if (segment === "import") {
+      invalidateCache("/api/categories");
+      invalidateCache("/api/tags");
+      invalidateCache("/api/projects");
+    }
     return body as TBody;
   }
 
@@ -221,7 +230,7 @@ export const apiClient = {
     return request<{ ok: true }>("/api/parts/bulk/update", { method: "POST", body: JSON.stringify({ ids, data }) });
   },
   restorePart(id: number) {
-    return request<{ ok: true }>(`/api/parts/${id}/restore`, { method: "POST" });
+    return request<{ ok: true }>(`/api/parts/${id}/restore`, { method: "POST", body: "{}" });
   },
   permanentlyDeletePart(id: number) {
     return request<{ ok: true }>(`/api/parts/${id}/permanent`, { method: "DELETE" });
@@ -318,7 +327,7 @@ export const apiClient = {
     return request<ImportBatchSummary[]>("/api/import/batches");
   },
   revertImportBatch(id: number) {
-    return request<{ deleted: number; restored: number; failed: number }>(`/api/import/batches/${id}/revert`, { method: "POST" });
+    return request<{ deleted: number; restored: number; failed: number }>(`/api/import/batches/${id}/revert`, { method: "POST", body: "{}" });
   },
   getPartsStats(search: URLSearchParams) {
     return request<{ totalValue: number; totalStock: number; count: number; valuedCount: number }>(

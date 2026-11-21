@@ -47,7 +47,7 @@ export class CsvExporter {
     // Quoting alone does not stop spreadsheet programs evaluating formulas.
     // Keep genuine numeric cells numeric, but neutralize untrusted text/headers.
     // eslint-disable-next-line no-control-regex -- spreadsheet importers may ignore leading control characters
-    const text = typeof value === "string" && /^[\s\u0000-\u001f]*[=+@-]/u.test(raw) ? `'${raw}` : raw;
+    const text = typeof value === "string" && /^[\s\u0000-\u001f\uFEFF]*[=+@-]/u.test(raw) ? `'${raw}` : raw;
     if (/["\n\r,]/.test(text)) {
       return `"${text.replace(/"/g, '""')}"`;
     }
