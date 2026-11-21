@@ -37,13 +37,25 @@ app.route("/api/statuses", statusesRoutes);
 app.route("/api/import", importRoutes);
 app.route("/api/export", exportRoutes);
 
-app.notFound((c) => {
+app.notFound(async (c) => {
   if (c.req.path.startsWith("/api/")) {
     return c.json({ error: { code: "NOT_FOUND", message: "Unknown API route." } }, 404);
   }
   if (c.env.ASSETS) {
-    return c.env.ASSETS.fetch(c.req.raw);
-  }
+    const response = await c.env.ASSETS.fetch(c.req.raw);
+    if (response.status !== 404) return response;
 
+    // Deep-linked SPA pages are only served AFTER Worker Basic Auth succeeds.
+    // The built-in asset SPA fallback can turn an authentication 401 into
+    // a 200 HTML response in the local/production assets pipeline.
+    if (c.req.method === "GET" && c.req.header("accept")?.includes("text/html")) {
+      const indexUrl = new URL("/index.html", c.req.url);
+      return c.env.ASSETS.fetch(new Request(indexUrl, {
+        method: "GET",
+        headers: c.req.raw.headers,
+      }));
+    }
+    return response;
+  }
   return c.json({ error: { code: "NOT_FOUND", message: "Route not found." } }, 404);
 });

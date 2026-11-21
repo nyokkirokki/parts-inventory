@@ -39,6 +39,11 @@ test("Basic Auth protects both the SPA shell and the API", async ({ playwright, 
   try {
     expect((await anonymous.get("/parts")).status()).toBe(401);
     expect((await anonymous.get("/api/parts")).status()).toBe(401);
+    const authorizedIndex = await page.request.get("/");
+    expect(authorizedIndex.ok()).toBeTruthy();
+    const match = (await authorizedIndex.text()).match(/src="(\/assets\/[^"]+\.js)"/);
+    if (!match) throw new Error("Built asset script missing from index.html");
+    expect((await anonymous.get(match[1])).status()).toBe(401);
   } finally {
     await anonymous.dispose();
   }
