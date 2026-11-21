@@ -35,6 +35,14 @@ async function partDetails(request: APIRequestContext, id: number) {
 test("Basic Auth protects both the SPA shell and the API", async ({ playwright, page }) => {
   const anonymous = await playwright.request.newContext({
     baseURL: "http://127.0.0.1:8787",
+    // Explicitly override credentials inherited from Playwright's global
+    // httpCredentials config. Otherwise the "anonymous" probe can retry a
+    // 401 with the valid E2E account and incorrectly appear to bypass auth.
+    httpCredentials: {
+      username: "not-the-e2e-user",
+      password: "intentionally-invalid-password",
+      send: "always",
+    },
   });
   try {
     // Non-navigation requests for an unknown SPA path may be rejected by
