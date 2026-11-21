@@ -41,8 +41,9 @@ const newLock = lock('4.11.0', 'BBB==');
 
 test('real checked-in pnpm lockfile is recognized before any automation runs', () => {
   const realLock = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.ok(parseLock(realLock).size > 100);
-  assert.throws(() => validateLockUpgrade(realLock, realLock, oldPkg, oldPkg));
+  assert.throws(() => validateLockUpgrade(realLock, realLock, manifest, manifest), /No registry changes/);
 });
 
 test('minor and patch manifest upgrades allowed', () => {
