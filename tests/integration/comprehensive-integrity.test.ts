@@ -95,4 +95,39 @@ describe("data integrity and production-limit regressions", () => {
     const check = await get(c, "/api/projects");
     expect(check.body.data.some((p: { name: string }) => p.name === "MUST-ROLLBACK")).toBe(false);
   });
+
+  it("rejects an import revert after a newer manual stock change", async () => {
+    const c = createTestClient();
+    const created = await post(c, "/api/parts", { ...sample, modelNumber: "ROLLBACK-CONFLICT" });
+    const id = created.body.data.id;
+    const imported = await post(c, "/api/import/parts", {
+      mode: "update",
+      rows: [{ category: "受動部品", model_number: "ROLLBACK-CONFLICT", name: "imported", stock_quantity: 14 }],
+    });
+    expect(imported.body.data.updated).toBe(1);
+    const edited = await post(c, "/api/parts/" + id + "/stock", { type: "in", quantity: 3 });
+    expect(edited.response.status).toBe(200);
+    const reverted = await post(c, "/api/import/batches/" + imported.body.data.batchId + "/revert", {});
+    expect(reverted.response.status).toBe(409);
+    const stillThere = await get(c, "/api/parts/" + id);
+    expect(stillThere.body.data.stockQuantity).toBe(17);
+  });
+
+  it("preflights all import revert entries before changing even one", async () => {
+    const c = createTestClient();
+    const a = await post(c, "/api/parts", { ...sample, modelNumber: "REV-PREFLIGHT-A" });
+    const b = await post(c, "/api/parts", { ...sample, modelNumber: "REV-PREFLIGHT-B" });
+    const imported = await post(c, "/api/import/parts", {
+      mode: "update", rows: [
+        { category: "受動部品", model_number: "REV-PREFLIGHT-A", name: "A", stock_quantity: 20 },
+        { category: "受動部品", model_number: "REV-PREFLIGHT-B", name: "B", stock_quantity: 20 },
+      ],
+    });
+    expect(imported.body.data.updated).toBe(2);
+    await post(c, "/api/parts/" + a.body.data.id + "/stock", { type: "in", quantity: 1 });
+    const reverted = await post(c, "/api/import/batches/" + imported.body.data.batchId + "/revert", {});
+    expect(reverted.response.status).toBe(409);
+    const remainingB = await get(c, "/api/parts/" + b.body.data.id);
+    expect(remainingB.body.data.stockQuantity).toBe(20);
+  });
 });
