@@ -156,30 +156,9 @@ export class PartsService {
     await this.partsRepository.bulkUpdate(ids, data);
   }
 
+
   async changeStock(id: number, input: StockChangeInput): Promise<PartDetail> {
-    const part = await this.partsRepository.getById(id);
-    if (!part) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
-
-    const before = part.stockQuantity;
-    const after =
-      input.type === "set"
-        ? input.quantity
-        : input.type === "adjustment"
-          ? before + input.quantity
-          : input.type === "out" || input.type === "use" || input.type === "dispose"
-            ? before - Math.abs(input.quantity)
-            : before + input.quantity;
-
-    if (after < 0) throw new AppError("NEGATIVE_STOCK", "Stock quantity cannot be negative.", 400);
-
-    await this.partsRepository.updateStockWithMovement(id, after, {
-      movementType: input.type,
-      quantityDelta: after - before,
-      quantityBefore: before,
-      quantityAfter: after,
-      reason: input.reason,
-      memo: input.memo,
-    });
+    await this.partsRepository.changeStockAtomically(id, input);
     return this.getDetail(id);
   }
 

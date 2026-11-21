@@ -2,7 +2,7 @@ import type { PartAlternative, PartAttribute, PartAttributeValue, PartsAnalytics
 import { AppError } from "../../middleware/error-handler";
 import type { DbPartAttributeRow, DbPartAttributeValueRow, DbPartRow, DbStockMovementRow, DbTagRow } from "../../types";
 import { mapAttribute, mapMovement, mapPart, mapPartAttributeValue, mapTag, toSearchText } from "../../utils";
-import type { PartWriteInput } from "./parts.schemas";
+import type { PartWriteInput, StockChangeInput } from "./parts.schemas";
 
 export type PartListFilters = {
   keyword?: string;
@@ -617,12 +617,33 @@ export class PartsRepository {
     await this.rebuildSearchTextForParts(ids);
   }
 
-  async updateStockWithMovement(partId: number, afterQuantity: number, movement: StockMovementInput): Promise<void> {
-    const [result] = await this.db.batch([
-      this.db.prepare("UPDATE parts SET stock_quantity = ?, updated_at = datetime('now') WHERE id = ?").bind(afterQuantity, partId),
-      this.movementStatement(partId, movement),
-    ]);
-    if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
+
+  // A D1 batch executes both statements within one transaction. The movement
+  // captures the current stock BEFORE an atomic SQL update, not a stale JS read.
+  async changeStockAtomically(partId: number, input: StockChangeInput): Promise<void> {
+    const isSet = input.type === "set" ? 1 : 0;
+    const delta = input.type === "out" || input.type === "use" || input.type === "dispose"
+      ? -Math.abs(input.quantity) : input.quantity;
+    try {
+      const [, updated] = await this.db.batch([
+        this.db.prepare(
+          "INSERT INTO stock_movements (part_id, movement_type, quantity_before, quantity_delta, quantity_after, reason, memo) " +
+          "SELECT id, ?, stock_quantity, CASE WHEN ? = 1 THEN ? - stock_quantity ELSE ? END, " +
+          "CASE WHEN ? = 1 THEN ? ELSE stock_quantity + ? END, ?, ? FROM parts WHERE id = ?",
+        ).bind(input.type, isSet, input.quantity, delta, isSet, input.quantity, delta,
+          input.reason ?? null, input.memo ?? null, partId),
+        this.db.prepare(
+          "UPDATE parts SET stock_quantity = CASE WHEN ? = 1 THEN ? ELSE stock_quantity + ? END, " +
+          "updated_at = datetime('now') WHERE id = ?",
+        ).bind(isSet, input.quantity, delta, partId),
+      ]);
+      if (updated.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
+    } catch (error) {
+      if (error instanceof Error && /CHECK constraint failed|constraint failed.*stock_quantity/i.test(error.message)) {
+        throw new AppError("NEGATIVE_STOCK", "Stock quantity cannot be negative.", 400);
+      }
+      throw error;
+    }
   }
 
   async listMovements(partId: number): Promise<StockMovement[]> {
