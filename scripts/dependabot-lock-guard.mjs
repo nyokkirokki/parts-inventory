@@ -26,7 +26,7 @@ function entries(section, depth) {
   const expression = new RegExp('^ {' + depth + "}(?:'([^']+)'|\"([^\"]+)\"|([^:]+)):(.*)$");
   let current;
   for (const line of section.slice(1)) {
-    const match = expression.exec(line);
+    const match = line.startsWith(' '.repeat(depth)) && line[depth] !== ' ' ? expression.exec(line) : null;
     if (match) {
       current = match[1] ?? match[2] ?? match[3];
       if (map.has(current)) reject('Duplicate entry ' + current);
