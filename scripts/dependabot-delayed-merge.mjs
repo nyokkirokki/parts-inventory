@@ -1,3 +1,4 @@
+/* global process, fetch, Buffer, console */
 // Trusted scheduled policy: never execute PR code or allow non-Dependabot PRs.
 const DAYS = 14, AGE_MS = DAYS * 86400000;
 const WORKFLOWS = ['ci.yml', 'security-regression.yml', 'browser-e2e.yml', 'backup-restore.yml'];
@@ -51,7 +52,7 @@ export function parseLock(yaml) {
     if (line === 'packages:') { inside = true; continue; }
     if (!inside) continue;
     if (line.trim() && !line.startsWith(' ')) break;
-    if (/^  \S.*:\s*$/.test(line)) {
+    if (/^ {2}\S.*:\s*$/.test(line)) {
       finish();
       key = line.trim().slice(0, -1);
       if ((key.startsWith("'") && key.endsWith("'")) ||
