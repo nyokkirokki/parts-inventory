@@ -55,5 +55,10 @@
     "vitest": "^4.1.7",
     "wrangler": "^4.95.0"
   },
+  "pnpm": {
+    "overrides": {
+      "dompurify": "^3.4.18"
+    }
+  },
   "packageManager": "pnpm@10.0.0"
 }

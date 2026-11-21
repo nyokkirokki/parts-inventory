@@ -1,0 +1,49 @@
+name: Refresh DOMPurify override dependency lock
+on:
+  push:
+    branches:
+      - test/security-regression-hardening-20261121
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: contains(github.event.head_commit.message, '[refresh-dompurify]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Generate secure lockfile
+        run: pnpm install --no-frozen-lockfile
+      - name: Verify exact DOMPurify tree
+        run: pnpm why dompurify
+      - name: Lint and regression tests and build
+        run: |
+          pnpm lint
+          pnpm test
+          pnpm build
+      - name: Verify no remaining published production advisories
+        run: pnpm audit --prod --audit-level low
+      - name: Print upstream SheetJS tarball SHA512 for lockfile pinning
+        run: |
+          curl --fail --location --silent --show-error --retry 3 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz' -o /tmp/sheetjs-security-verified.tgz
+          echo SHEETJS_SHA512_BASE64=$(openssl dgst -sha512 -binary /tmp/sheetjs-security-verified.tgz | base64 -w0)
+          echo SHEETJS_SHA256=$(sha256sum /tmp/sheetjs-security-verified.tgz)
+      - name: Push verified dependency lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(deps): resolve patched DOMPurify and remove residual advisories"
+            git push origin HEAD:test/security-regression-hardening-20261121
+          fi
