@@ -11,7 +11,7 @@ pnpm install --frozen-lockfile
 npm install --prefix e2e
 ./e2e/node_modules/.bin/playwright install chromium
 pnpm build
-pnpm exec wrangler d1 migrations apply parts-inventory --local --persist-to .wrangler/state
+pnpm exec wrangler d1 migrations apply db-parts --local --persist-to .wrangler/state
 cp .dev.vars.example .dev.vars
 # Update .dev.vars to BASIC_AUTH_USER=e2e / BASIC_AUTH_PASSWORD=test-only-secret
 pnpm exec wrangler dev --local --persist-to .wrangler/state --port 8787

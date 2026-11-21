@@ -39,7 +39,7 @@ jobs:
       - name: Build SPA and Worker code
         run: pnpm build
       - name: Prepare fresh local D1 using all migrations
-        run: pnpm exec wrangler d1 migrations apply parts-inventory --local --persist-to .wrangler/state
+        run: pnpm exec wrangler d1 migrations apply db-parts --local --persist-to .wrangler/state
       - name: Start local Cloudflare Worker with Basic Auth
         run: |
           printf 'BASIC_AUTH_USER=%s\nBASIC_AUTH_PASSWORD=%s\n' "$E2E_BASIC_AUTH_USER" "$E2E_BASIC_AUTH_PASSWORD" > .dev.vars
