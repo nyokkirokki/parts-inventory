@@ -38,6 +38,9 @@ app.route("/api/import", importRoutes);
 app.route("/api/export", exportRoutes);
 
 app.notFound((c) => {
+  if (c.req.path.startsWith("/api/")) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Unknown API route." } }, 404);
+  }
   if (c.env.ASSETS) {
     return c.env.ASSETS.fetch(c.req.raw);
   }

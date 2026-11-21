@@ -52,12 +52,14 @@ export function PartForm({ categories, tags, statuses, initialPart, onSubmit }: 
 
   // Fetch attribute definitions when category changes
   useEffect(() => {
+    let active = true;
     if (!categoryId) {
       setAttrDefs([]);
       setDefinedValues({});
-      return;
+      return () => { active = false; };
     }
     apiClient.listCategoryAttributes(categoryId).then((defs) => {
+      if (!active) return;
       setAttrDefs(defs);
       // Initialize defined values from existing part attributes (for edit mode)
       const existingAttrs = initialPart?.attributes ?? [];
@@ -71,8 +73,9 @@ export function PartForm({ categories, tags, statuses, initialPart, onSubmit }: 
       }
       setDefinedValues(initial);
     }).catch(() => {
-      setAttrDefs([]);
+      if (active) setAttrDefs([]);
     });
+    return () => { active = false; };
   }, [categoryId, initialPart]);
 
   async function handleSubmit(event: React.FormEvent) {

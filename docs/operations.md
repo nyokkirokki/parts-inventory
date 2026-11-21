@@ -15,7 +15,7 @@ pnpm install
 cp .dev.vars.example .dev.vars
 ```
 
-`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` は画面とAPI全体を保護するBasic認証用。ローカル開発ではVite proxyが `.dev.vars` の値を使ってWorkerへ認証ヘッダーを付与する。未設定または空の場合、APIは `BASIC_AUTH_NOT_CONFIGURED` を返す。Cloudflare宛のsecret値は空にしないでください。
+`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` は画面とAPI全体を保護するBasic認証用。ローカル開発ではVite proxy自体は認証ヘッダーを自動付与しないため、Worker APIへのアクセスではブラウザでBasic認証を行う。未設定または空の場合、APIは `BASIC_AUTH_NOT_CONFIGURED` を返す。Cloudflare宛のsecret値は空にしないでください。
 
 ## D1 Creation
 

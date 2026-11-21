@@ -22,7 +22,7 @@
 
 ## Prerequisites
 
-- Node.js（最近の LTS。例: 20 以上）
+- Node.js 24以上（SQLite統合テストの実行要件）
 - pnpm@10（このリポジトリは `package.json` の `packageManager` で `pnpm@10.0.0` をピン留め）
 - Cloudflare アカウント（D1作成・デプロイ用。下記「D1 Database」参照）
 
