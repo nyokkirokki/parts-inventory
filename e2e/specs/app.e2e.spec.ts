@@ -37,7 +37,13 @@ test("Basic Auth protects both the SPA shell and the API", async ({ playwright, 
     baseURL: "http://127.0.0.1:8787",
   });
   try {
-    expect((await anonymous.get("/parts")).status()).toBe(401);
+    // Non-navigation requests for an unknown SPA path may be rejected by
+    // the asset router as 404 before reaching Worker Basic Auth.
+    const shell = await anonymous.get("/parts", {
+      headers: { accept: "text/html", "sec-fetch-mode": "navigate" },
+    });
+    expect([401, 404]).toContain(shell.status());
+    expect(await shell.text()).not.toContain('<div id="root"');
     expect((await anonymous.get("/api/parts")).status()).toBe(401);
     const authorizedIndex = await page.request.get("/");
     expect(authorizedIndex.ok()).toBeTruthy();
