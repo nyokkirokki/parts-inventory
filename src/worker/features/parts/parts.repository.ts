@@ -435,49 +435,55 @@ export class PartsRepository {
     return row ? this.hydratePart(row) : null;
   }
 
-  async create(input: PartRecordInput, tagIds: number[]): Promise<number> {
-    const row = await this.db
-      .prepare(
-        `INSERT INTO parts (
-          category_id, model_number, name, description, manufacturer, footprint, stock_quantity, price,
-          location_id, case_number, purchase_url, datasheet_url, memo, low_stock_threshold, search_text, status_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      )
-      .bind(
-        input.categoryId,
-        input.modelNumber,
-        input.name,
-        input.description ?? null,
-        input.manufacturer ?? null,
-        input.footprint ?? null,
-        input.stockQuantity,
-        input.price ?? null,
-        input.locationId ?? null,
-        input.caseNumber ?? null,
-        input.purchaseUrl || null,
-        input.datasheetUrl || null,
-        input.memo ?? null,
-        input.lowStockThreshold,
-        input.searchText,
-        input.statusId ?? null,
-      )
-      .first<{ id: number }>();
 
-    if (!row) throw new AppError("PART_CREATE_FAILED", "Failed to create part.", 500);
-    await this.db.batch([
-      ...this.replaceAttributesStatements(row.id, input.attributes),
-      ...this.replaceTagsStatements(row.id, tagIds),
-      ...this.replaceAlternativesStatements(row.id, input.alternatives ?? []),
-      this.movementStatement(row.id, {
-        movementType: "initial",
-        quantityDelta: input.stockQuantity,
-        quantityBefore: 0,
-        quantityAfter: input.stockQuantity,
-        reason: "initial",
-        memo: "Initial stock",
+  async create(input: PartRecordInput, tagIds: number[]): Promise<number> {
+    // A request token lets all child inserts reference the new row in one
+    // atomic D1 batch without relying on last_insert_rowid() after child writes.
+    const token = crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare(
+        "INSERT INTO parts (category_id, model_number, name, description, manufacturer, footprint, " +
+        "stock_quantity, price, location_id, case_number, purchase_url, datasheet_url, memo, " +
+        "low_stock_threshold, search_text, status_id, creation_token) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+      ).bind(input.categoryId, input.modelNumber, input.name, input.description ?? null,
+        input.manufacturer ?? null, input.footprint ?? null, input.stockQuantity, input.price ?? null,
+        input.locationId ?? null, input.caseNumber ?? null, input.purchaseUrl || null,
+        input.datasheetUrl || null, input.memo ?? null, input.lowStockThreshold,
+        input.searchText, input.statusId ?? null, token),
+      ...input.attributes.map((a) => this.db.prepare(
+        "INSERT INTO part_attributes (part_id, key, label, value, unit, normalized_value) " +
+        "SELECT id, ?, ?, ?, ?, ? FROM parts WHERE creation_token = ?",
+      ).bind(a.key, a.label ?? null, a.value, a.unit ?? null,
+        a.normalizedValue ?? a.value.toLowerCase(), token)),
+      ...input.attributes.map((a) => {
+        const numeric = Number(a.value);
+        return this.db.prepare(
+          "INSERT INTO part_attribute_values (part_id, attribute_definition_id, value_text, value_number, unit, display_value) " +
+          "SELECT p.id, ad.id, ?, ?, ?, ? FROM parts p " +
+          "JOIN attribute_definitions ad ON ad.category_id = p.category_id AND ad.key = ? " +
+          "WHERE p.creation_token = ?",
+        ).bind(a.value, Number.isFinite(numeric) ? numeric : null,
+          a.unit ?? null, a.value + (a.unit ?? ""), a.key, token);
       }),
-    ]);
-    return row.id;
+      ...[...new Set(tagIds)].map((tagId) => this.db.prepare(
+        "INSERT INTO part_tags (part_id, tag_id) SELECT id, ? FROM parts WHERE creation_token = ?",
+      ).bind(tagId, token)),
+      ...[...new Set(input.alternatives ?? [])].map((text, i) => this.db.prepare(
+        "INSERT INTO part_alternatives (part_id, text, sort_order) " +
+        "SELECT id, ?, ? FROM parts WHERE creation_token = ?",
+      ).bind(text, i, token)),
+      this.db.prepare(
+        "INSERT INTO stock_movements (part_id, movement_type, quantity_before, quantity_delta, quantity_after, reason, memo) " +
+        "SELECT id, 'initial', 0, ?, ?, 'initial', 'Initial stock' FROM parts WHERE creation_token = ?",
+      ).bind(input.stockQuantity, input.stockQuantity, token),
+    ];
+    const output = await this.db.batch(statements);
+    const id = Number((output[0]?.results?.[0] as { id?: number } | undefined)?.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new AppError("PART_CREATE_FAILED", "Failed to create part.", 500);
+    }
+    return id;
   }
 
   async ensureLocationByName(name: string): Promise<number> {
@@ -496,43 +502,25 @@ export class PartsRepository {
     return row.id;
   }
 
-  async update(id: number, input: PartRecordInput, tagIds: number[], movement?: StockMovementInput): Promise<void> {
-    const result = await this.db
-      .prepare(
-        `UPDATE parts
-         SET category_id = ?, model_number = ?, name = ?, description = ?, manufacturer = ?, footprint = ?,
-             stock_quantity = ?, price = ?, location_id = ?, case_number = ?, purchase_url = ?, datasheet_url = ?,
-             memo = ?, low_stock_threshold = ?, search_text = ?, status_id = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-      )
-      .bind(
-        input.categoryId,
-        input.modelNumber,
-        input.name,
-        input.description ?? null,
-        input.manufacturer ?? null,
-        input.footprint ?? null,
-        input.stockQuantity,
-        input.price ?? null,
-        input.locationId ?? null,
-        input.caseNumber ?? null,
-        input.purchaseUrl || null,
-        input.datasheetUrl || null,
-        input.memo ?? null,
-        input.lowStockThreshold,
-        input.searchText,
-        input.statusId ?? null,
-        id,
-      )
-      .run();
 
-    if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
-    await this.db.batch([
+  async update(id: number, input: PartRecordInput, tagIds: number[], movement?: StockMovementInput): Promise<void> {
+    const [result] = await this.db.batch([
+      this.db.prepare(
+        "UPDATE parts SET category_id = ?, model_number = ?, name = ?, description = ?, manufacturer = ?, " +
+        "footprint = ?, stock_quantity = ?, price = ?, location_id = ?, case_number = ?, purchase_url = ?, " +
+        "datasheet_url = ?, memo = ?, low_stock_threshold = ?, search_text = ?, status_id = ?, " +
+        "updated_at = datetime('now') WHERE id = ?",
+      ).bind(input.categoryId, input.modelNumber, input.name, input.description ?? null,
+        input.manufacturer ?? null, input.footprint ?? null, input.stockQuantity, input.price ?? null,
+        input.locationId ?? null, input.caseNumber ?? null, input.purchaseUrl || null,
+        input.datasheetUrl || null, input.memo ?? null, input.lowStockThreshold, input.searchText,
+        input.statusId ?? null, id),
       ...this.replaceAttributesStatements(id, input.attributes),
       ...this.replaceTagsStatements(id, tagIds),
       ...this.replaceAlternativesStatements(id, input.alternatives ?? []),
       ...(movement ? [this.movementStatement(id, movement)] : []),
     ]);
+    if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
   }
 
   async archive(id: number): Promise<void> {
