@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { errorHandler } from "./middleware/error-handler";
 import { requireBasicAuth } from "./middleware/basic-auth";
 import { requestLogger } from "./middleware/request-logger";
+import { rejectCrossSiteMutations } from "./middleware/csrf-guard";
 import { categoriesRoutes } from "./features/categories/categories.routes";
 import { exportRoutes } from "./features/export/export.routes";
 import { importRoutes } from "./features/import/import.routes";
@@ -17,6 +18,7 @@ export const app = new Hono<Env>();
 app.onError(errorHandler);
 app.use("/api/*", requestLogger);
 app.use("*", requireBasicAuth);
+app.use("/api/*", rejectCrossSiteMutations);
 
 app.get("/api/health", (c) =>
   c.json({

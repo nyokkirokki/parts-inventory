@@ -44,9 +44,12 @@ export class CsvExporter {
 
   private escapeCell(value: string | number | null): string {
     const text = value == null ? "" : String(value);
-    if (/["\n\r,]/.test(text)) {
-      return `"${text.replace(/"/g, '""')}"`;
+    // Spreadsheet applications can execute user-controlled formula-looking CSV cells.
+    // Apostrophe-prefix strings only; actual numeric values (including negatives) stay numeric.
+    const safe = typeof value === "string" && /^[\s\uFEFF]*[=+\-@]/.test(text) ? `\u0027${text}` : text;
+    if (/["\n\r,]/.test(safe)) {
+      return `"${safe.replace(/"/g, '""')}"`;
     }
-    return text;
+    return safe;
   }
 }
