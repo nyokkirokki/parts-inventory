@@ -92,11 +92,18 @@ export class ImportService {
             tagIds: row.tags === undefined ? previous.tagIds : [],
             alternatives: previous.alternatives,
           });
-          entries.push({ partId: existing.id, action: "update", beforeJson: JSON.stringify(previous) });
+          const after = await this.partsService.getDetail(existing.id);
+          entries.push({
+            partId: existing.id, action: "update",
+            beforeJson: JSON.stringify(previous), afterJson: JSON.stringify(toWriteInput(after)),
+          });
           updated += 1;
         } else {
           const detail = await this.partsService.create(payload);
-          entries.push({ partId: detail.id, action: "create", beforeJson: null });
+          entries.push({
+            partId: detail.id, action: "create", beforeJson: null,
+            afterJson: JSON.stringify(toWriteInput(detail)),
+          });
           created += 1;
         }
       } catch (error) {
@@ -134,35 +141,71 @@ export class ImportService {
       );
     }
 
-    let deleted = 0;
-    let restored = 0;
-    let failed = 0;
 
+    // Preflight all affected IDs before changing any rows.
+    const checked = new Set<number>();
     for (const entry of found.entries) {
-      try {
-        if (entry.action === "create") {
-          await this.partsService.delete(entry.part_id);
-          deleted += 1;
-        } else if (entry.before_json) {
-          const before = JSON.parse(entry.before_json) as PartWriteInput;
-          await this.partsService.update(entry.part_id, before);
-          restored += 1;
-        }
-      } catch {
-        failed += 1;
+      if (checked.has(entry.part_id)) continue;
+      checked.add(entry.part_id);
+      if (!entry.after_json) {
+        throw new AppError("IMPORT_REVERT_UNVERIFIED", "Legacy batch lacks verified snapshots.", 409);
+      }
+      const current = await this.readCurrentWriteInput(entry.part_id);
+      const serialized = current ? JSON.stringify(current) : null;
+      if (serialized !== entry.after_json && serialized !== entry.before_json &&
+          !(entry.action === "create" && current === null)) {
+        throw new AppError("IMPORT_REVERT_CONFLICT", "Part was edited after import; revert is unsafe.", 409);
       }
     }
 
+    let deleted = 0;
+    let restored = 0;
+    let failed = 0;
+    // Idempotent best-effort resume after partial operational failures.
+    for (const entry of found.entries) {
+      try {
+        if (!entry.after_json) throw new AppError("IMPORT_REVERT_UNVERIFIED", "Unverified batch.", 409);
+        const current = await this.readCurrentWriteInput(entry.part_id);
+        const serialized = current ? JSON.stringify(current) : null;
+        if (entry.action === "create") {
+          if (current === null) continue;
+          if (serialized !== entry.after_json) {
+            throw new AppError("IMPORT_REVERT_CONFLICT", "Part changed after import.", 409);
+          }
+          await this.partsService.delete(entry.part_id);
+          deleted++;
+        } else if (entry.before_json) {
+          if (serialized === entry.before_json) continue;
+          if (serialized !== entry.after_json) {
+            throw new AppError("IMPORT_REVERT_CONFLICT", "Part changed after import.", 409);
+          }
+          await this.partsService.update(entry.part_id, JSON.parse(entry.before_json) as PartWriteInput);
+          restored++;
+        }
+      } catch {
+        failed++;
+      }
+    }
     if (failed > 0) {
       throw new AppError(
         "IMPORT_REVERT_PARTIAL_FAILURE",
-        "Import revert failed for one or more entries. The batch was not marked as reverted.",
+        "One or more entries could not be reverted; batch remains retryable.",
         409,
       );
     }
 
     await this.batchesRepository.markReverted(id);
     return { deleted, restored, failed };
+  }
+
+
+  private async readCurrentWriteInput(id: number): Promise<PartWriteInput | null> {
+    try {
+      return toWriteInput(await this.partsService.getDetail(id));
+    } catch (error) {
+      if (error instanceof AppError && error.code === "PART_NOT_FOUND") return null;
+      throw error;
+    }
   }
 
   private async ensureCategory(name: string) {
