@@ -234,7 +234,7 @@ export class PartsRepository {
       .bind(...pageParams)
       .all<DbPartRow>();
 
-    const items = await Promise.all(results.map((row) => this.hydratePart(row)));
+    const items = await this.hydrateParts(results);
     return { items, total };
   }
 
@@ -258,7 +258,7 @@ export class PartsRepository {
       .bind(...params)
       .all<DbPartRow>();
 
-    return Promise.all(results.map((row) => this.hydratePart(row)));
+    return this.hydrateParts(results);
   }
 
   async findByModelNumberAndCategory(categoryId: number, modelNumber: string): Promise<{ id: number; stockQuantity: number } | null> {
@@ -543,13 +543,16 @@ export class PartsRepository {
     if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
   }
 
+
   async bulkArchive(ids: number[]): Promise<void> {
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => "?").join(", ");
-    await this.db
-      .prepare(`UPDATE parts SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${placeholders}) AND archived_at IS NULL`)
-      .bind(...ids)
-      .run();
+    for (let i = 0; i < ids.length; i += 80) {
+      const group = ids.slice(i, i + 80);
+      const marks = group.map(() => "?").join(", ");
+      await this.db.prepare(
+        "UPDATE parts SET archived_at = datetime('now'), updated_at = datetime('now') " +
+        "WHERE id IN (" + marks + ") AND archived_at IS NULL",
+      ).bind(...group).run();
+    }
   }
 
   async restore(id: number): Promise<void> {
@@ -565,10 +568,13 @@ export class PartsRepository {
     if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
   }
 
+
   async bulkDelete(ids: number[]): Promise<void> {
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => "?").join(", ");
-    await this.db.prepare(`DELETE FROM parts WHERE id IN (${placeholders})`).bind(...ids).run();
+    for (let i = 0; i < ids.length; i += 80) {
+      const group = ids.slice(i, i + 80);
+      const marks = group.map(() => "?").join(", ");
+      await this.db.prepare("DELETE FROM parts WHERE id IN (" + marks + ")").bind(...group).run();
+    }
   }
 
   async bulkUpdate(ids: number[], data: Partial<DbPartRow>): Promise<void> {
@@ -597,14 +603,17 @@ export class PartsRepository {
 
     if (updates.length === 0) return;
 
-    const placeholders = ids.map(() => "?").join(", ");
-    params.push(...ids);
 
-    await this.db
-      .prepare(`UPDATE parts SET ${updates.join(", ")}, updated_at = datetime('now') WHERE id IN (${placeholders})`)
-      .bind(...params)
-      .run();
-
+    // Each D1 statement is limited to 100 bound parameters.
+    const chunkSize = Math.max(1, 100 - params.length);
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const group = ids.slice(i, i + chunkSize);
+      const marks = group.map(() => "?").join(", ");
+      await this.db.prepare(
+        "UPDATE parts SET " + updates.join(", ") +
+        ", updated_at = datetime('now') WHERE id IN (" + marks + ")",
+      ).bind(...params, ...group).run();
+    }
     await this.rebuildSearchTextForParts(ids);
   }
 
@@ -662,23 +671,60 @@ export class PartsRepository {
     await this.rebuildSearchTextForRows(results);
   }
 
+
   async rebuildSearchTextForParts(partIds: number[]): Promise<void> {
-    const ids = [...new Set(partIds)].filter(Boolean);
-    if (ids.length === 0) return;
-    const placeholders = ids.map(() => "?").join(", ");
-    const { results } = await this.db
-      .prepare(
-        `SELECT p.*, c.name AS category_name, c.slug AS category_slug, l.name AS location_name, l.code AS location_code,
-                s.name AS status_name, s.slug AS status_slug, s.color AS status_color
-         FROM parts p
-         JOIN categories c ON c.id = p.category_id
-         LEFT JOIN locations l ON l.id = p.location_id
-         LEFT JOIN part_statuses s ON s.id = p.status_id
-         WHERE p.id IN (${placeholders})`,
-      )
-      .bind(...ids)
-      .all<DbPartRow>();
-    await this.rebuildSearchTextForRows(results);
+    const ids = [...new Set(partIds)].filter((id) => Number.isSafeInteger(id) && id > 0);
+    for (let start = 0; start < ids.length; start += 80) {
+      const chunk = ids.slice(start, start + 80);
+      const marks = chunk.map(() => "?").join(", ");
+      const { results } = await this.db.prepare(
+        "SELECT p.*, c.name AS category_name, c.slug AS category_slug, l.name AS location_name, l.code AS location_code, " +
+        "s.name AS status_name, s.slug AS status_slug, s.color AS status_color " +
+        "FROM parts p JOIN categories c ON c.id = p.category_id " +
+        "LEFT JOIN locations l ON l.id = p.location_id LEFT JOIN part_statuses s ON s.id = p.status_id " +
+        "WHERE p.id IN (" + marks + ")",
+      ).bind(...chunk).all<DbPartRow>();
+      await this.rebuildSearchTextForRows(results);
+    }
+  }
+
+  private async hydrateParts(rows: DbPartRow[]): Promise<PartSummary[]> {
+    const parts: PartSummary[] = [];
+    for (let offset = 0; offset < rows.length; offset += 80) {
+      const group = rows.slice(offset, offset + 80);
+      const ids = group.map((r) => r.id);
+      const marks = ids.map(() => "?").join(", ");
+      const [attributesResult, tagsResult, valuesResult] = await Promise.all([
+        this.db.prepare("SELECT * FROM part_attributes WHERE part_id IN (" + marks + ") ORDER BY id")
+          .bind(...ids).all<DbPartAttributeRow>(),
+        this.db.prepare("SELECT pt.part_id AS bound_part_id, t.* FROM tags t JOIN part_tags pt ON pt.tag_id = t.id WHERE pt.part_id IN (" + marks + ") ORDER BY t.name COLLATE NOCASE")
+          .bind(...ids).all<DbTagRow & { bound_part_id: number }>(),
+        this.db.prepare("SELECT pav.*, ad.key, ad.label FROM part_attribute_values pav JOIN attribute_definitions ad ON ad.id = pav.attribute_definition_id WHERE pav.part_id IN (" + marks + ") ORDER BY ad.sort_order")
+          .bind(...ids).all<DbPartAttributeValueRow>(),
+      ]);
+      const attributes = new Map<number, PartAttribute[]>();
+      const tags = new Map<number, Tag[]>();
+      const values = new Map<number, PartAttributeValue[]>();
+      for (const row of attributesResult.results) {
+        const group = attributes.get(row.part_id) ?? [];
+        group.push(mapAttribute(row));
+        attributes.set(row.part_id, group);
+      }
+      for (const row of tagsResult.results) {
+        const group = tags.get(row.bound_part_id) ?? [];
+        group.push(mapTag(row));
+        tags.set(row.bound_part_id, group);
+      }
+      for (const row of valuesResult.results) {
+        const group = values.get(row.part_id) ?? [];
+        group.push(mapPartAttributeValue(row));
+        values.set(row.part_id, group);
+      }
+      for (const row of group) {
+        parts.push(mapPart(row, attributes.get(row.id) ?? [], tags.get(row.id) ?? [], values.get(row.id) ?? []));
+      }
+    }
+    return parts;
   }
 
   private async hydratePart(row: DbPartRow): Promise<PartSummary> {
@@ -827,8 +873,7 @@ export class PartsRepository {
   private async rebuildSearchTextForRows(rows: DbPartRow[]): Promise<void> {
     const statements: D1PreparedStatement[] = [];
 
-    for (const row of rows) {
-      const part = await this.hydratePart(row);
+    for (const part of await this.hydrateParts(rows)) {
       const searchText = toSearchText({
         modelNumber: part.modelNumber,
         name: part.name,
