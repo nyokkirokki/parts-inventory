@@ -1,5 +1,6 @@
 /* global URL, structuredClone, Buffer */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { runAutoMerge, parseVersion, validateManifestUpgrade, parseLock, validateLockUpgrade, oldEnough } from './dependabot-delayed-merge.mjs';
 
@@ -37,6 +38,12 @@ function lock(version, integrity = 'AAA==') {
 }
 const oldLock = lock('4.10.0', 'AAA==');
 const newLock = lock('4.11.0', 'BBB==');
+
+test('real checked-in pnpm lockfile is recognized before any automation runs', () => {
+  const realLock = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');
+  assert.ok(parseLock(realLock).size > 100);
+  assert.throws(() => validateLockUpgrade(realLock, realLock, oldPkg, oldPkg));
+});
 
 test('minor and patch manifest upgrades allowed', () => {
   assert.deepEqual(parseVersion('^4.11.0').v, [4, 11, 0]);
