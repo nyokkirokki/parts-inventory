@@ -57,4 +57,35 @@ describe("CSRF and request smuggling regression matrix", () => {
     const response = await client.raw("/api/health", { headers: { origin: "https://evil.example" } });
     expect(response.status).toBe(200);
   });
+
+  it.each([
+    "null", "https://localhost", "http://localhost:9090",
+    "http://127.0.0.1", "http://localhost.evil.example",
+    "ftp://localhost", "not-a-url",
+  ])("rejects malformed or non-exact Origin %s", async origin => {
+    const response = await client.raw("/api/categories", {
+      method: "POST",
+      headers: { origin },
+      body: JSON.stringify({ name: "Rejected" }),
+    });
+    expect(response.status).toBe(403);
+  });
+  it.each(["application/json", "application/json; charset=UTF-8"])(
+    "accepts JSON content type %s for same-origin clients", async contentType => {
+      const response = await client.raw("/api/categories", {
+        method: "POST",
+        headers: { "content-type": contentType, origin: "http://localhost" },
+        body: JSON.stringify({ name: "Trusted" }),
+      });
+      expect(response.status).toBe(201);
+    },
+  );
+  it("blocks cross-site write even if Origin looks same-origin", async () => {
+    const response = await client.raw("/api/categories", {
+      method: "POST",
+      headers: { origin: "http://localhost", "sec-fetch-site": "cross-site" },
+      body: JSON.stringify({ name: "NotTrusted" }),
+    });
+    expect(response.status).toBe(403);
+  });
 });
