@@ -72,13 +72,13 @@ export class PartsRepository {
 
     if (filters.keyword) {
       conditions.push(
-        `(p.search_text LIKE ?
+        `(p.search_text LIKE ? OR l.name LIKE ?
           OR EXISTS (SELECT 1 FROM part_attributes pa WHERE pa.part_id = p.id AND (pa.key LIKE ? OR pa.label LIKE ? OR pa.value LIKE ? OR pa.unit LIKE ?))
           OR EXISTS (SELECT 1 FROM part_attribute_values pav JOIN attribute_definitions ad ON ad.id = pav.attribute_definition_id WHERE pav.part_id = p.id AND (ad.key LIKE ? OR ad.label LIKE ? OR pav.value_text LIKE ? OR pav.display_value LIKE ?))
         )`,
       );
       const keyword = `%${filters.keyword.toLowerCase()}%`;
-      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     if (filters.categoryId) {
@@ -552,6 +552,11 @@ export class PartsRepository {
   }
 
   async delete(id: number): Promise<void> {
+    const linked = await this.db.prepare("SELECT project_id FROM project_parts WHERE part_id = ? LIMIT 1")
+      .bind(id).first<{ project_id: number }>();
+    if (linked) {
+      throw new AppError("PART_IN_PROJECT", "Part is linked to a project; remove the link first.", 409);
+    }
     const result = await this.db.prepare("DELETE FROM parts WHERE id = ?").bind(id).run();
     if (result.meta.changes === 0) throw new AppError("PART_NOT_FOUND", "Part not found.", 404);
   }

@@ -146,7 +146,8 @@ export class PartsService {
     if (input.footprint !== undefined) data.footprint = input.footprint;
     if (input.locationId !== undefined) data.location_id = input.locationId;
     if (input.locationName !== undefined) {
-      data.location_id = await this.partsRepository.ensureLocationByName(input.locationName!);
+      const name = input.locationName?.trim();
+      data.location_id = name ? await this.partsRepository.ensureLocationByName(name) : null;
     }
     if (input.caseNumber !== undefined) data.case_number = input.caseNumber;
     if (input.lowStockThreshold !== undefined) data.low_stock_threshold = input.lowStockThreshold;

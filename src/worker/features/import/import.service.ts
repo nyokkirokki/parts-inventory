@@ -47,6 +47,9 @@ export class ImportService {
 
     for (const [index, row] of rows.entries()) {
       try {
+        // Parse untrusted row data before creating any master records.
+        const parsedTags = this.parseTags(row.tags);
+        const parsedAttributes = this.parseAttributes(row.attributes_json);
         const category = await this.ensureCategory(row.category);
         const existing = await this.partsRepository.findByModelNumberAndCategory(category.id, row.model_number);
         const rowMode = row.mode ?? mode;
@@ -62,8 +65,8 @@ export class ImportService {
           caseNumber: row.case_number ?? null,
           memo: row.memo ?? null,
           lowStockThreshold: row.low_stock_threshold ?? 0,
-          tagNames: this.parseTags(row.tags),
-          attributes: this.parseAttributes(row.attributes_json),
+          tagNames: parsedTags,
+          attributes: parsedAttributes,
           tagIds: [],
           alternatives: [],
         };
