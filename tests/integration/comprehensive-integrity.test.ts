@@ -130,4 +130,61 @@ describe("data integrity and production-limit regressions", () => {
     const remainingB = await get(c, "/api/parts/" + b.body.data.id);
     expect(remainingB.body.data.stockQuantity).toBe(20);
   });
+
+  it("searches by current storage location name, even after a rename", async () => {
+    const c = createTestClient();
+    const created = await post(c, "/api/parts", {
+      ...sample, modelNumber: "LOCATION-SEARCH", locationId: 1,
+    });
+    const updated = await c.request("/api/locations/1", {
+      method: "PUT",
+      body: JSON.stringify({ name: "Audit Warehouse West", code: "A-01" }),
+    });
+    expect(updated.response.status).toBe(200);
+    const results = await get(c, "/api/parts?q=" + encodeURIComponent("Audit Warehouse West"));
+    expect(results.body.data.some((p: { id: number }) => p.id === created.body.data.id)).toBe(true);
+  });
+
+  it("rejects irreversible deletion of a part linked to a project", async () => {
+    const c = createTestClient();
+    const part = await post(c, "/api/parts", { ...sample, modelNumber: "BOM-GUARD" });
+    const project = await post(c, "/api/projects", {
+      name: "Protected BOM",
+      parts: [{ partId: part.body.data.id, quantityRequired: 2 }],
+    });
+    expect(project.response.status).toBe(201);
+    const deleted = await c.request("/api/parts/" + part.body.data.id + "/permanent", { method: "DELETE" });
+    expect(deleted.response.status).toBe(409);
+    const stillThere = await get(c, "/api/projects/" + project.body.data.id);
+    expect(stillThere.body.data.parts).toHaveLength(1);
+  });
+
+  it("clears a location via bulk update instead of making an empty location", async () => {
+    const c = createTestClient();
+    const part = await post(c, "/api/parts", {
+      ...sample, modelNumber: "CLEAR-LOCATION", locationId: 1,
+    });
+    const updated = await post(c, "/api/parts/bulk/update", {
+      ids: [part.body.data.id], data: { locationName: "" },
+    });
+    expect(updated.response.status).toBe(200);
+    const current = await get(c, "/api/parts/" + part.body.data.id);
+    expect(current.body.data.locationId).toBeNull();
+    const locations = await get(c, "/api/locations");
+    expect(locations.body.data.some((v: { name: string }) => v.name === "")).toBe(false);
+  });
+
+  it("does not create an import category when the same row fails attribute parsing", async () => {
+    const c = createTestClient();
+    const imported = await post(c, "/api/import/parts", {
+      mode: "skip", rows: [{
+        category: "AuditInvalidCategory", model_number: "P-1", name: "Broken",
+        attributes_json: "{not-json",
+      }],
+    });
+    expect(imported.response.status).toBe(200);
+    expect(imported.body.data.failed).toBe(1);
+    const categories = await get(c, "/api/categories");
+    expect(categories.body.data.some((v: { name: string }) => v.name === "AuditInvalidCategory")).toBe(false);
+  });
 });
