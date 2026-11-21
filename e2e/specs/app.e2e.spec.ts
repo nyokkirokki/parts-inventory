@@ -145,7 +145,7 @@ test("JSON export displays a created part in the rendered screen", async ({ page
   await expect(page.getByRole("heading", { name: "エクスポート" })).toBeVisible();
   await page.getByRole("button", { name: "エクスポート開始" }).click();
   await expect(page.getByRole("heading", { name: "JSON 出力" })).toBeVisible();
-  await expect(page.locator("textarea[readonly]")).toContainText(model);
+  await expect(page.locator("textarea[readonly]")).toHaveValue(new RegExp(model));
 });
 
 test("an unrecognized API path returns JSON 404 instead of the SPA shell", async ({ request }) => {
