@@ -119,8 +119,13 @@ function main() {
   const source = new DatabaseSync(sourcePath, { readOnly: true });
   const restored = new DatabaseSync(targetPath);
   try {
+    // D1's SQL export can insert child rows before creating a referenced
+    // table. SQLite dumps must be restored with foreign keys temporarily
+    // disabled, then fully checked after all tables have been created.
     // This writes ONLY into the disposable database in OS tmpdir.
+    restored.exec("PRAGMA foreign_keys = OFF;");
     restored.exec(sql);
+    restored.exec("PRAGMA foreign_keys = ON;");
     checkIntegrity(source, "Source");
     checkIntegrity(restored, "Restored backup");
     const sourceTables = tableNames(source);
