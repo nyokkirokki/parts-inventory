@@ -68,9 +68,16 @@ describe("safe migration: atomic import rollback", () => {
       // Simulate a fault at the end of the transaction, after all revert SQL.
       c.db.prepare("INSERT INTO categories (name, slug) VALUES ('unreachable', 'passives')"),
     ]);
-    const reverted = await write(c, "/api/import/batches/" + imported.body.data.batchId + "/revert", "POST", {});
-    expect(reverted.response.status).toBeGreaterThanOrEqual(400);
-    c.db.batch = orig;
+    // An injected native SQLite fault may propagate before an HTTP response
+    // is produced by the local adapter. What matters: no partial DB changes.
+    try {
+      const result = await write(c, "/api/import/batches/" + imported.body.data.batchId + "/revert", "POST", {});
+      expect(result.response.status).toBeGreaterThanOrEqual(400);
+    } catch (error) {
+      expect(String(error)).toMatch(/UNIQUE constraint failed/);
+    } finally {
+      c.db.batch = orig;
+    }
     expect((await read(c, "/api/parts/" + a)).body.data.stockQuantity).toBe(20);
     expect((await read(c, "/api/parts/" + b)).body.data.stockQuantity).toBe(30);
     const batches = (await read(c, "/api/import/batches")).body.data;

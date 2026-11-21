@@ -120,7 +120,6 @@ export class CategoriesRepository {
       "OR (json_extract(j.value,'$.dataType') IS NOT d.data_type",
       "AND EXISTS (SELECT 1 FROM part_attribute_values v WHERE v.attribute_definition_id=d.id))",
       ")))",
-      ")",
     ].join(" ");
     const guard = [
       "INSERT INTO attribute_change_guards (category_id, valid)",
