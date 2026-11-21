@@ -230,7 +230,7 @@ export const apiClient = {
     return request<{ ok: true }>("/api/parts/bulk/update", { method: "POST", body: JSON.stringify({ ids, data }) });
   },
   restorePart(id: number) {
-    return request<{ ok: true }>(`/api/parts/${id}/restore`, { method: "POST" });
+    return request<{ ok: true }>(`/api/parts/${id}/restore`, { method: "POST", body: "{}" });
   },
   permanentlyDeletePart(id: number) {
     return request<{ ok: true }>(`/api/parts/${id}/permanent`, { method: "DELETE" });
@@ -327,7 +327,7 @@ export const apiClient = {
     return request<ImportBatchSummary[]>("/api/import/batches");
   },
   revertImportBatch(id: number) {
-    return request<{ deleted: number; restored: number; failed: number }>(`/api/import/batches/${id}/revert`, { method: "POST" });
+    return request<{ deleted: number; restored: number; failed: number }>(`/api/import/batches/${id}/revert`, { method: "POST", body: "{}" });
   },
   getPartsStats(search: URLSearchParams) {
     return request<{ totalValue: number; totalStock: number; count: number; valuedCount: number }>(
