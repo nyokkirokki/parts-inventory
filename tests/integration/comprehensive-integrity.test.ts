@@ -225,7 +225,7 @@ describe("data integrity and production-limit regressions", () => {
     );
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect((await response.json()).error.code).toBe("NOT_FOUND");
+    expect((await response.json() as { error: { code: string } }).error.code).toBe("NOT_FOUND");
   });
 
   it("records all stock before/after values in a consistent contiguous sequence", async () => {
