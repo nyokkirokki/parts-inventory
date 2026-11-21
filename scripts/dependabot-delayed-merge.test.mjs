@@ -1,3 +1,4 @@
+/* global URL, structuredClone, Buffer */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { runAutoMerge, parseVersion, validateManifestUpgrade, parseLock, validateLockUpgrade, oldEnough } from './dependabot-delayed-merge.mjs';
