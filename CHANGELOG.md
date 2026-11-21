@@ -17,4 +17,4 @@
 
 ### Outstanding
 - Browser and real-deployment penetration tests are separate from in-process CI. Check Cloudflare WAF/rate limits for password-guessing protection.
-- Dependency advisories below the HIGH severity threshold are reported, not automatically blocked.
+- CI currently fails on HIGH-or-worse advisories and reports lower severities. Future advisories need triage.
