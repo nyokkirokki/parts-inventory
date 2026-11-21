@@ -91,9 +91,23 @@ function main() {
   if (argv.includes("--remote")) {
     throw new Error("Remote / production backups must never be touched by this local verification command.");
   }
-  const sources = findDbFiles(sourceDir);
+  const candidates = findDbFiles(sourceDir);
+  // Miniflare also creates an internal SQLite store. Select only the ONE
+  // database that actually has our application tables; fail if ambiguous.
+  const sources = candidates.filter(file => {
+    let db;
+    try {
+      db = new DatabaseSync(file, { readOnly: true });
+      const names = new Set(tableNames(db));
+      return names.has("parts") && names.has("categories") &&
+        names.has("import_batches") && names.has("stock_movements");
+    } finally {
+      db?.close();
+    }
+  });
   if (sources.length !== 1) {
-    throw new Error("Expected exactly one local D1 SQLite database, found " + sources.length + ". Refusing ambiguous comparison.");
+    throw new Error("Expected exactly one application D1 SQLite database, found " +
+      sources.length + " among " + candidates.length + " SQLite files. Refusing ambiguous comparison.");
   }
   const sourcePath = resolve(sources[0]);
   const sql = readFileSync(sqlPath, "utf8");
