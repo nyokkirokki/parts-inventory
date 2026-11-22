@@ -35,13 +35,6 @@ jobs:
       - name: Test supply-chain integrity recovery invariants
         run: node --test tests/sheetjs-integrity.test.mjs
 
-      - name: Generate lockfile for validation (temporary; no publish)
-        run: |
-          pnpm install --lockfile-only --ignore-scripts --fix-lockfile --no-frozen-lockfile
-          node scripts/sheetjs-integrity.mjs --repair
-          node scripts/sheetjs-integrity.mjs
-          node -e 'const fs=require("node:fs"); const s=fs.readFileSync("pnpm-lock.yaml","utf8"); for(let i=0;i<s.length;i+=3500)console.log("LOCKFILE_CHUNK["+Math.floor(i/3500)+"]="+JSON.stringify(s.slice(i,i+3500)))'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
