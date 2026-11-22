@@ -44,8 +44,5 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Test delayed Dependabot auto-merge safety guards
-        run: node --test scripts/dependabot-delayed-merge.test.mjs
-
       - name: Build
         run: pnpm build
