@@ -9,7 +9,7 @@ import {
 } from '../scripts/sheetjs-integrity.mjs';
 
 const manifest = { dependencies: { xlsx: SHEETJS_URL } };
-const good = `lockfileVersion: '9.0'\npackages:\n\n  xlsx@${SHEETJS_URL}:\n    resolution: {integrity: ${SHEETJS_INTEGRITY}, tarball: ${SHEETJS_URL}}\n    version: 0.20.3\n\nsnapshots:\n`;
+const good = `lockfileVersion: '9.0'\npackages:\n\n  xlsx@${SHEETJS_URL}:\n    resolution: {integrity: ${SHEETJS_INTEGRITY}, tarball: ${SHEETJS_URL}}\n    version: 0.20.3\n\nsnapshots:\n\n  xlsx@${SHEETJS_URL}: {}\n`;
 const missing = good.replace(`integrity: ${SHEETJS_INTEGRITY}, `, '');
 
 test('accepts the approved integrity and never rewrites it', () => {
@@ -32,7 +32,7 @@ test('refuses unexpected source, version, or additional xlsx entries', () => {
   assert.throws(() => repairMissingSheetJsIntegrity(missing, { dependencies: { xlsx: 'https://invalid.test/x.tgz' } }), /Unapproved/);
   assert.throws(() => repairMissingSheetJsIntegrity(missing.replaceAll(SHEETJS_URL, 'https://invalid.test/x.tgz'), manifest), /exactly one/);
   assert.throws(() => repairMissingSheetJsIntegrity(missing.replace('version: 0.20.3', 'version: 0.18.5'), manifest), /Unexpected SheetJS lockfile version/);
-  assert.throws(() => repairMissingSheetJsIntegrity(missing + `\n  xlsx@${SHEETJS_URL}:\n    resolution: {tarball: ${SHEETJS_URL}}\n`, manifest), /additional SheetJS/);
+  assert.throws(() => repairMissingSheetJsIntegrity(missing.replace('snapshots:\n', `  xlsx@${SHEETJS_URL}:\n    resolution: {tarball: ${SHEETJS_URL}}\nsnapshots:\n`), manifest), /additional SheetJS/);
 });
 test('refuses unexpected resolution metadata', () => {
   const altered = missing.replace(`tarball: ${SHEETJS_URL}`, `tarball: ${SHEETJS_URL}, extra: bad`);
