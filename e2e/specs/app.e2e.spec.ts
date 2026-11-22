@@ -167,6 +167,66 @@ test("JSON export displays a created part in the rendered screen", async ({ page
   await expect(page.locator("textarea[readonly]")).toHaveValue(new RegExp(model));
 });
 
+
+test("React Router deep links and history survive navigation and reload", async ({ page }) => {
+  await page.goto("/projects");
+  await expect(page.getByRole("heading", { name: "プロジェクト", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "新規作成" }).last().click();
+  await expect(page).toHaveURL(/\/projects\/new$/);
+  await expect(page.getByRole("heading", { name: "プロジェクト登録" })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByRole("heading", { name: "プロジェクト", exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/\/projects\/new$/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "プロジェクト登録" })).toBeVisible();
+});
+
+test("project BOM pricing survives create/edit and never consumes inventory", async ({ page, request }) => {
+  const model = uniq();
+  const part = await seedPart(request, model, { price: 125, stockQuantity: 10 });
+  const name = "回帰BOM-" + model;
+
+  await page.goto("/projects/new");
+  await expect(page.getByRole("heading", { name: "プロジェクト登録" })).toBeVisible();
+  await page.getByLabel("名前", { exact: true }).fill(name);
+  await page.getByRole("button", { name: "部品を検索して追加" }).click();
+  const picker = page.getByRole("dialog", { name: "部品を選択" });
+  await picker.getByPlaceholder("例: ESP32、10kΩ、村田、SOT-23").fill(model);
+  await expect(picker.getByText(model, { exact: true }).first()).toBeVisible();
+  await picker.getByRole("button", { name: "この部品を追加" }).click();
+  await picker.getByRole("button", { name: "閉じる" }).click();
+
+  await page.getByLabel("必要数").fill("3");
+  await page.getByRole("button", { name: "費用を追加" }).click();
+  const costName = page.getByPlaceholder("名前", { exact: true });
+  await costName.fill("加工代");
+  await costName.locator("..").locator('input[type="number"]').fill("50");
+  await expect(page.getByText("￥425", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/\d+$/);
+
+  const id = Number(new URL(page.url()).pathname.split("/").at(-1));
+  const created = await request.get("/api/projects/" + id);
+  expect(created.ok()).toBeTruthy();
+  const initial = (await created.json()).data;
+  expect(initial.totals).toMatchObject({ partsCost: 375, costsTotal: 50, total: 425 });
+  expect(initial.parts).toHaveLength(1);
+  expect((await partDetails(request, part.id)).stockQuantity).toBe(10);
+
+  await page.getByRole("link", { name: "編集", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "プロジェクト編集" })).toBeVisible();
+  await page.getByLabel("必要数").fill("2");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp("/projects/" + id + "$"));
+
+  const edited = await request.get("/api/projects/" + id);
+  expect(edited.ok()).toBeTruthy();
+  expect((await edited.json()).data.totals).toMatchObject({ partsCost: 250, costsTotal: 50, total: 300 });
+  expect((await partDetails(request, part.id)).stockQuantity).toBe(10);
+});
+
 test("an unrecognized API path returns JSON 404 instead of the SPA shell", async ({ request }) => {
   const response = await request.get("/api/not-a-real-route-" + uniq());
   expect(response.status()).toBe(404);
