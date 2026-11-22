@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
+      - name: Check pinned tarball integrity BEFORE dependency installation
+        run: node scripts/sheetjs-integrity.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build disposable local database
