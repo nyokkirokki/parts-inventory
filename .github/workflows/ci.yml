@@ -29,6 +29,12 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Check pinned tarball integrity BEFORE dependency installation
+        run: node scripts/sheetjs-integrity.mjs
+
+      - name: Test supply-chain integrity recovery invariants
+        run: node --test tests/sheetjs-integrity.test.mjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
