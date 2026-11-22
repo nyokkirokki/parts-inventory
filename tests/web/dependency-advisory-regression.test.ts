@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("dependency advisory regression invariants", () => {
@@ -24,6 +24,15 @@ describe("dependency advisory regression invariants", () => {
     expect(lock).toContain("dompurify@3.4.18:");
     expect(lock).not.toContain("dompurify@3.4.6:");
   });
+  it("never runs unattended dependency merges", () => {
+    expect(existsSync(".github/workflows/dependabot-delayed-merge.yml")).toBe(false);
+    expect(existsSync("scripts/dependabot-delayed-merge.mjs")).toBe(false);
+    expect(existsSync("scripts/dependabot-lock-guard.mjs")).toBe(false);
+    const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+    expect(ci).not.toContain("dependabot-delayed-merge.test.mjs");
+    expect(readFileSync(".github/dependabot.yml", "utf8")).toContain('package-ecosystem: "npm"');
+  });
+
   it("tracks the data integrity patch version after the regression gate", () => {
     expect(pkg.version).toBe("0.2.1");
   });
