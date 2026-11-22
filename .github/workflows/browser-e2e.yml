@@ -64,7 +64,7 @@ jobs:
         run: npm --prefix e2e test
       - name: Upload browser traces, screenshots, videos and HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-e2e-artifacts
           path: |
