@@ -17,8 +17,14 @@ function locate(lock, manifest) {
   }
   const newline = lock.includes('\r\n') ? '\r\n' : '\n';
   const lines = lock.split(newline);
-  const indexes = lines.flatMap((line, index) => line === key ? [index] : []);
-  if (lines.filter(line => line.startsWith('  xlsx@')).length !== 1) {
+  // pnpm contains both packages and snapshots entries. Only packages has
+  // the tarball resolution; a matching snapshots key is expected, not a duplicate.
+  const start = lines.indexOf('packages:');
+  const end = lines.indexOf('snapshots:');
+  if (start < 0 || end <= start) throw new Error('Unexpected pnpm lockfile section layout');
+  const packageLines = lines.slice(start + 1, end);
+  const indexes = packageLines.flatMap((line, index) => line === key ? [start + 1 + index] : []);
+  if (packageLines.filter(line => line.startsWith('  xlsx@')).length !== 1) {
     throw new Error('Unexpected additional SheetJS lockfile source');
   }
   if (indexes.length !== 1 || !lines[indexes[0] + 1]?.startsWith('    resolution: ')) {
